@@ -1,33 +1,37 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Backgrounds
-  static const Color background = Color(0xFF080810);
-  static const Color surface = Color(0xFF10101C);
-  static const Color card = Color(0xFF16162A);
-  static const Color codeBlock = Color(0xFF0D0D1A);
+  AppColors._();
 
-  // Borders
-  static const Color border = Color(0xFF252538);
-  static const Color borderBright = Color(0xFF383858);
+  static const Color bg          = Color(0xFF060B18);
+  static const Color surface     = Color(0xFF0D1526);
+  static const Color card        = Color(0xFF111D33);
+  static const Color cardHover   = Color(0xFF162236);
+  static const Color border      = Color(0xFF1A2844);
+  static const Color borderBright= Color(0xFF243555);
 
-  // Semantic
-  static const Color danger = Color(0xFFFF3B3B);
-  static const Color dangerDim = Color(0x22FF3B3B);
-  static const Color dangerBorder = Color(0x55FF3B3B);
-  static const Color warning = Color(0xFFFFB800);
-  static const Color warningDim = Color(0x22FFB800);
-  static const Color warningBorder = Color(0x55FFB800);
-  static const Color success = Color(0xFF00D97E);
-  static const Color successDim = Color(0x2200D97E);
-  static const Color successBorder = Color(0x5500D97E);
-  static const Color info = Color(0xFF4D9FFF);
-  static const Color infoDim = Color(0x224D9FFF);
-  static const Color infoBorder = Color(0x554D9FFF);
+  static const Color primary     = Color(0xFF4D9FFF);
+  static const Color primaryDim  = Color(0xFF0D2A4D);
 
-  // Text
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFF8A8AA8);
-  static const Color textMuted = Color(0xFF4A4A6A);
-  static const Color textCode = Color(0xFF7EFFA0);
+  static const Color success     = Color(0xFF00D68F);
+  static const Color successDim  = Color(0xFF002E1D);
+
+  static const Color warning     = Color(0xFFFFB800);
+  static const Color warningDim  = Color(0xFF332500);
+
+  static const Color critical    = Color(0xFFFF4D6A);
+  static const Color criticalDim = Color(0xFF330010);
+
+  static const Color high        = Color(0xFFFF8C42);
+  static const Color highDim     = Color(0xFF331A00);
+
+  static const Color medium      = Color(0xFFFFB800);
+  static const Color low         = Color(0xFF4ECDC4);
+  static const Color lowDim      = Color(0xFF0A2826);
+
+  static const Color textPrimary   = Color(0xFFE8EDF5);
+  static const Color textSecondary = Color(0xFF6B7FA3);
+  static const Color textMuted     = Color(0xFF3A4A6B);
+
+  static const Color mono = Color(0xFF7DD3FC);
 }
