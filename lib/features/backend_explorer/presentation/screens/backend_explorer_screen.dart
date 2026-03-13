@@ -9,11 +9,33 @@ import '../providers/backend_explorer_provider.dart';
 // Screen
 // ─────────────────────────────────────────────────────────────────────────────
 
-class BackendExplorerScreen extends ConsumerWidget {
+class BackendExplorerScreen extends ConsumerStatefulWidget {
   const BackendExplorerScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BackendExplorerScreen> createState() =>
+      _BackendExplorerScreenState();
+}
+
+class _BackendExplorerScreenState
+    extends ConsumerState<BackendExplorerScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Start 4-second in-app polling as soon as the screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(backendExplorerProvider.notifier).startPolling();
+    });
+  }
+
+  @override
+  void dispose() {
+    ref.read(backendExplorerProvider.notifier).stopPolling();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(backendExplorerProvider);
     final notifier = ref.read(backendExplorerProvider.notifier);
 
@@ -83,13 +105,21 @@ class _TopBar extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 2),
-                const Text(
-                  'code-gaurd.onrender.com  ·  AWS Secrets Manager',
-                  style: TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 11,
-                    letterSpacing: 0.2,
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'code-gaurd.onrender.com  ·  AWS Secrets Manager',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    if (state.lastRefreshed != null) ...[
+                      const SizedBox(width: 6),
+                      _LivePollBadge(isPolling: state.isPolling),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -118,6 +148,65 @@ class _TopBar extends StatelessWidget {
             visualDensity: VisualDensity.compact,
           ),
         ],
+      ),
+    );
+  }
+}
+
+// Pulsing "AUTO" badge shown while polling is active
+class _LivePollBadge extends StatefulWidget {
+  final bool isPolling;
+  const _LivePollBadge({required this.isPolling});
+
+  @override
+  State<_LivePollBadge> createState() => _LivePollBadgeState();
+}
+
+class _LivePollBadgeState extends State<_LivePollBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _fade = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isPolling) return const SizedBox.shrink();
+    return FadeTransition(
+      opacity: _fade,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppColors.success.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+              color: AppColors.success.withValues(alpha: 0.4)),
+        ),
+        child: const Text(
+          'AUTO',
+          style: TextStyle(
+            color: AppColors.success,
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.0,
+          ),
+        ),
       ),
     );
   }
