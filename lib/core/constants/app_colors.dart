@@ -23,6 +23,7 @@ class AppColors {
   static const Color successBorder = Color(0x5500D97E);
   static const Color info = Color(0xFF4D9FFF);
   static const Color infoDim = Color(0x224D9FFF);
+  static const Color infoBorder = Color(0x554D9FFF);
 
   // Text
   static const Color textPrimary = Color(0xFFFFFFFF);

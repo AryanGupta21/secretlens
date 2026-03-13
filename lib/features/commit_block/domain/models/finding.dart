@@ -37,6 +37,8 @@ class Finding {
   final int line;
   final Severity severity;
   final String maskedValue;
+  /// Actual secret value — used only for API submission, never displayed in UI.
+  final String? rawValue;
   final FixStatus fixStatus;
   final String? storedSecretArn;
   final String? generatedCode;
@@ -49,6 +51,7 @@ class Finding {
     required this.line,
     required this.severity,
     required this.maskedValue,
+    this.rawValue,
     this.fixStatus = FixStatus.unfixed,
     this.storedSecretArn,
     this.generatedCode,
@@ -67,6 +70,7 @@ class Finding {
       line: line,
       severity: severity,
       maskedValue: maskedValue,
+      rawValue: rawValue,
       language: language,
       fixStatus: fixStatus ?? this.fixStatus,
       storedSecretArn: storedSecretArn ?? this.storedSecretArn,

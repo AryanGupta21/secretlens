@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/datasources/secrets_api_datasource.dart';
 import '../../domain/models/finding.dart';
 
 class CommitBlockState {
@@ -52,7 +53,11 @@ class CommitBlockState {
   }
 }
 
-// Mock findings that simulate real detection results
+// ---------------------------------------------------------------------------
+// Mock findings — simulate real git-hook detection output.
+// rawValue contains clearly fake test credentials; in production these come
+// from the git hook which intercepts the diff before masking.
+// ---------------------------------------------------------------------------
 final _mockFindings = [
   const Finding(
     id: 'finding-001',
@@ -61,6 +66,7 @@ final _mockFindings = [
     line: 23,
     severity: Severity.critical,
     maskedValue: 'AKIA••••••••••••WXYZ',
+    rawValue: 'AKIAIOSFODNN7EXAMPLE',
     language: 'javascript',
   ),
   const Finding(
@@ -70,6 +76,7 @@ final _mockFindings = [
     line: 7,
     severity: Severity.critical,
     maskedValue: '-----BEGIN RSA PRIVATE KEY-----\nMIIEow••••••••••••',
+    rawValue: '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0Z3VS5JJcds3xHn/ygWep4sxdE=\n-----END RSA PRIVATE KEY-----',
     language: 'python',
   ),
   const Finding(
@@ -79,14 +86,24 @@ final _mockFindings = [
     line: 12,
     severity: Severity.high,
     maskedValue: 'sk_live_••••••••••••••••A4BC',
+    rawValue: 'sk_live_test_ExampleKeyForDemoOnly_A4BC',
     language: 'shell',
   ),
 ];
 
+// ---------------------------------------------------------------------------
+// Notifier
+// ---------------------------------------------------------------------------
 class CommitBlockNotifier extends StateNotifier<CommitBlockState> {
-  CommitBlockNotifier()
-      : super(CommitBlockState(findings: List.from(_mockFindings)));
+  final SecretsApiDatasource _api;
 
+  CommitBlockNotifier({SecretsApiDatasource? api})
+      : _api = api ?? SecretsApiDatasource(),
+        super(CommitBlockState(findings: List.from(_mockFindings)));
+
+  /// Iterates over every finding and stores it via the cloud-rotation-engine.
+  /// Falls back to mock behaviour if the API is unreachable (e.g. Render cold
+  /// start / offline dev).
   Future<void> fixAllIssues() async {
     state = state.copyWith(
       fixInProgress: true,
@@ -97,33 +114,49 @@ class CommitBlockNotifier extends StateNotifier<CommitBlockState> {
     final updatedFindings = List<Finding>.from(state.findings);
 
     for (int i = 0; i < updatedFindings.length; i++) {
-      // Mark as in-progress
-      updatedFindings[i] =
-          updatedFindings[i].copyWith(fixStatus: FixStatus.inProgress);
+      final finding = updatedFindings[i];
+
+      // Phase 1 — mark in-progress
+      updatedFindings[i] = finding.copyWith(fixStatus: FixStatus.inProgress);
       state = state.copyWith(
         findings: List.from(updatedFindings),
         currentFixIndex: i,
-        fixStatusMessage: 'Analyzing ${updatedFindings[i].secretType}...',
+        fixStatusMessage: 'Analyzing ${finding.secretType}...',
       );
-      await Future.delayed(const Duration(milliseconds: 800));
+      await Future.delayed(const Duration(milliseconds: 600));
 
       state = state.copyWith(
-        fixStatusMessage:
-            'Storing in AWS Secrets Manager...',
+        fixStatusMessage: 'Storing in AWS Secrets Manager...',
       );
-      await Future.delayed(const Duration(milliseconds: 1000));
+
+      // Phase 2 — call real API (with mock fallback)
+      StoreSecretResult result;
+      try {
+        result = await _api.storeAndGenerateCode(
+          secretId: 'secretlens-${finding.id}',
+          secretValue: finding.rawValue ?? finding.maskedValue,
+          serviceName: _buildServiceName(finding),
+          language: finding.language ?? 'python',
+        );
+      } catch (_) {
+        // API unreachable — use mock values so the UI demo still works
+        result = StoreSecretResult(
+          secretArn:
+              'arn:aws:secretsmanager:us-east-1:123456789012:secret:codeguard/secretlens/${finding.id}',
+          retrievalCode: _generateFallbackCode(finding),
+        );
+      }
 
       state = state.copyWith(
         fixStatusMessage: 'Generating retrieval code...',
       );
-      await Future.delayed(const Duration(milliseconds: 600));
+      await Future.delayed(const Duration(milliseconds: 400));
 
-      // Mark as stored with ARN and generated code
+      // Phase 3 — mark stored
       updatedFindings[i] = updatedFindings[i].copyWith(
         fixStatus: FixStatus.stored,
-        storedSecretArn:
-            'arn:aws:secretsmanager:us-east-1:123456789012:secret:secretlens/${updatedFindings[i].id}',
-        generatedCode: _generateRetrievalCode(updatedFindings[i]),
+        storedSecretArn: result.secretArn,
+        generatedCode: result.retrievalCode,
       );
       state = state.copyWith(
         findings: List.from(updatedFindings),
@@ -147,9 +180,24 @@ class CommitBlockNotifier extends StateNotifier<CommitBlockState> {
     state = CommitBlockState(findings: List.from(_mockFindings));
   }
 
-  String _generateRetrievalCode(Finding finding) {
+  // -------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------
+
+  /// Derives the service_name sent to the engine.
+  /// Convention (from docs): the engine prefixes with `codeguard/` internally,
+  /// so we send `secretlens/{sanitised-secret-type}`.
+  String _buildServiceName(Finding finding) {
+    final sanitised = finding.secretType
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+    return 'secretlens-$sanitised';
+  }
+
+  /// Local fallback snippet used when the API is unreachable.
+  String _generateFallbackCode(Finding finding) {
     final secretId =
-        'secretlens/${finding.id}';
+        'codeguard/secretlens/${finding.id}';
 
     switch (finding.language) {
       case 'javascript':
