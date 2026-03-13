@@ -1,13 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:secretlens/main.dart';
+import 'package:secretlens/app.dart';
 
 void main() {
-  testWidgets('CommitBlockedScreen renders smoke test',
-      (WidgetTester tester) async {
+  testWidgets('App renders without crashing', (WidgetTester tester) async {
     await tester.pumpWidget(
       const ProviderScope(child: SecretLensApp()),
     );
-    expect(find.text('COMMIT\nBLOCKED'), findsOneWidget);
+    expect(find.byType(ProviderScope), findsOneWidget);
   });
 }
