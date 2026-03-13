@@ -7,6 +7,7 @@ import '../widgets/risk_warning_box.dart';
 import '../widgets/footer_branding.dart';
 import 'findings_detail_screen.dart';
 import 'fix_issues_progress_screen.dart';
+import '../../../backend_explorer/presentation/screens/backend_explorer_screen.dart';
 
 class CommitBlockedScreen extends ConsumerWidget {
   const CommitBlockedScreen({super.key});
@@ -40,6 +41,42 @@ class CommitBlockedScreen extends ConsumerWidget {
                     tooltip: 'Dismiss',
                   ),
                   const Spacer(),
+                  // Backend Explorer entry point
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const BackendExplorerScreen(),
+                      ),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.infoDim,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.infoBorder),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cloud_outlined,
+                              color: AppColors.info, size: 11),
+                          SizedBox(width: 4),
+                          Text(
+                            'EXPLORE API',
+                            style: TextStyle(
+                              color: AppColors.info,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

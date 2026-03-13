@@ -130,14 +130,15 @@ class CommitBlockNotifier extends StateNotifier<CommitBlockState> {
       );
 
       // Phase 2 — call real API (with mock fallback)
-      StoreSecretResult? result;
+      StoreSecretResult result;
       try {
-        result = await _api.storeSecret(
-          serviceName: _buildServiceName(finding),
+        result = await _api.storeAndGenerateCode(
+          secretId: 'secretlens-${finding.id}',
           secretValue: finding.rawValue ?? finding.maskedValue,
+          serviceName: _buildServiceName(finding),
           language: finding.language ?? 'python',
         );
-      } on Exception {
+      } catch (_) {
         // API unreachable — use mock values so the UI demo still works
         result = StoreSecretResult(
           secretArn:
