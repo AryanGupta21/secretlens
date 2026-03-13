@@ -1,170 +1,398 @@
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/compliance_engine_service.dart';
 
-enum ComplianceStatus { pass, fail, warning, pending }
+export '../../../../core/services/compliance_engine_service.dart'
+    show DocumentInfo, ComplianceRule, FindingResult, IngestResponse, EngineHealth;
 
-class ComplianceCheck {
-  final String id;
-  final String category;
-  final String title;
-  final String description;
-  final ComplianceStatus status;
-  final String severity;
-  final DateTime lastChecked;
+// ── Enums ─────────────────────────────────────────────────────────────────────
 
-  const ComplianceCheck({
-    required this.id,
-    required this.category,
-    required this.title,
-    required this.description,
-    required this.status,
-    required this.severity,
-    required this.lastChecked,
-  });
-}
+enum EngineStatus { unknown, online, offline }
+
+// ── State ─────────────────────────────────────────────────────────────────────
 
 class ComplianceState {
-  final List<ComplianceCheck> checks;
-  final int passCount;
-  final int failCount;
-  final int warningCount;
-  final String categoryFilter;
+  final EngineStatus engineStatus;
+  final String engineVersion;
+
+  // Documents
+  final List<DocumentInfo> documents;
+  final bool loadingDocuments;
+
+  // Rules
+  final List<ComplianceRule> rules;
+  final bool loadingRules;
+  final String severityFilter;
+  final String categoryRuleFilter;
+
+  // Upload
+  final bool uploading;
+  final IngestResponse? lastIngest;
+  final String? uploadError;
+
+  // Validate
+  final bool validating;
+  final List<FindingResult> findings;
+  final bool validationRan;
+  final String? validateError;
 
   const ComplianceState({
-    required this.checks,
-    required this.passCount,
-    required this.failCount,
-    required this.warningCount,
-    this.categoryFilter = 'ALL',
+    this.engineStatus = EngineStatus.unknown,
+    this.engineVersion = '',
+    this.documents = const [],
+    this.loadingDocuments = false,
+    this.rules = const [],
+    this.loadingRules = false,
+    this.severityFilter = 'ALL',
+    this.categoryRuleFilter = 'ALL',
+    this.uploading = false,
+    this.lastIngest,
+    this.uploadError,
+    this.validating = false,
+    this.findings = const [],
+    this.validationRan = false,
+    this.validateError,
   });
 
-  double get score =>
-      checks.isEmpty ? 0.0 : passCount / checks.length;
-
-  List<ComplianceCheck> get filteredChecks {
-    if (categoryFilter == 'ALL') return checks;
-    return checks
-        .where((c) => c.category.toUpperCase() == categoryFilter)
-        .toList();
-  }
-
-  ComplianceState copyWith({
-    List<ComplianceCheck>? checks,
-    int? passCount,
-    int? failCount,
-    int? warningCount,
-    String? categoryFilter,
-  }) {
-    return ComplianceState(
-      checks:         checks         ?? this.checks,
-      passCount:      passCount      ?? this.passCount,
-      failCount:      failCount      ?? this.failCount,
-      warningCount:   warningCount   ?? this.warningCount,
-      categoryFilter: categoryFilter ?? this.categoryFilter,
-    );
+  List<ComplianceRule> get filteredRules {
+    return rules.where((r) {
+      final bySev = severityFilter == 'ALL' ||
+          r.severity.toUpperCase() == severityFilter;
+      final byCat = categoryRuleFilter == 'ALL' ||
+          r.category.toUpperCase() == categoryRuleFilter;
+      return bySev && byCat;
+    }).toList();
   }
 }
+
+// ── Notifier ──────────────────────────────────────────────────────────────────
 
 class ComplianceNotifier extends StateNotifier<ComplianceState> {
-  ComplianceNotifier() : super(_buildMockState());
+  final ComplianceEngineService _service;
 
-  static ComplianceState _buildMockState() {
-    final now = DateTime.now();
-    final checks = [
-      ComplianceCheck(
-        id: 'c1',
-        category: 'IAM',
-        title: 'IAM Policy Review',
-        description: 'All IAM policies follow least-privilege principle',
-        status: ComplianceStatus.pass,
-        severity: 'high',
-        lastChecked: now.subtract(const Duration(hours: 2)),
-      ),
-      ComplianceCheck(
-        id: 'c2',
-        category: 'SECRETS',
-        title: 'Secret Rotation Policy',
-        description: 'Secrets rotated within 90-day window',
-        status: ComplianceStatus.warning,
-        severity: 'critical',
-        lastChecked: now.subtract(const Duration(hours: 1)),
-      ),
-      ComplianceCheck(
-        id: 'c3',
-        category: 'LOGGING',
-        title: 'CloudTrail Logging',
-        description: 'AWS CloudTrail enabled for all regions',
-        status: ComplianceStatus.pass,
-        severity: 'high',
-        lastChecked: now.subtract(const Duration(minutes: 30)),
-      ),
-      ComplianceCheck(
-        id: 'c4',
-        category: 'ENCRYPTION',
-        title: 'Encryption at Rest',
-        description:
-            'All S3 buckets and RDS instances use KMS encryption',
-        status: ComplianceStatus.pass,
-        severity: 'critical',
-        lastChecked: now.subtract(const Duration(hours: 3)),
-      ),
-      ComplianceCheck(
-        id: 'c5',
-        category: 'ACCESS',
-        title: 'MFA Enforcement',
-        description:
-            'Multi-factor authentication enforced for all IAM users',
-        status: ComplianceStatus.fail,
-        severity: 'critical',
-        lastChecked: now.subtract(const Duration(hours: 5)),
-      ),
-      ComplianceCheck(
-        id: 'c6',
-        category: 'NETWORK',
-        title: 'VPC Security Groups',
-        description:
-            'No security groups allow unrestricted inbound access',
-        status: ComplianceStatus.warning,
-        severity: 'high',
-        lastChecked: now.subtract(const Duration(hours: 4)),
-      ),
-      ComplianceCheck(
-        id: 'c7',
-        category: 'SECRETS',
-        title: 'Hardcoded Secrets Scan',
-        description:
-            'No hardcoded credentials detected in repositories',
-        status: ComplianceStatus.fail,
-        severity: 'critical',
-        lastChecked: now.subtract(const Duration(minutes: 15)),
-      ),
-      ComplianceCheck(
-        id: 'c8',
-        category: 'IAM',
-        title: 'Root Account Usage',
-        description: 'AWS root account not used for daily operations',
-        status: ComplianceStatus.pass,
-        severity: 'critical',
-        lastChecked: now.subtract(const Duration(hours: 6)),
-      ),
-    ];
+  ComplianceNotifier(this._service) : super(const ComplianceState()) {
+    _init();
+  }
 
-    final pass    = checks.where((c) => c.status == ComplianceStatus.pass).length;
-    final fail    = checks.where((c) => c.status == ComplianceStatus.fail).length;
-    final warning = checks.where((c) => c.status == ComplianceStatus.warning).length;
+  Future<void> _init() async {
+    await Future.wait([healthCheck(), loadDocuments(), loadRules()]);
+  }
 
-    return ComplianceState(
-      checks:       checks,
-      passCount:    pass,
-      failCount:    fail,
-      warningCount: warning,
+  Future<void> healthCheck() async {
+    try {
+      final health = await _service.healthCheck();
+      state = ComplianceState(
+        engineStatus: health.isHealthy ? EngineStatus.online : EngineStatus.offline,
+        engineVersion: health.version,
+        documents: state.documents,
+        loadingDocuments: state.loadingDocuments,
+        rules: state.rules,
+        loadingRules: state.loadingRules,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: state.uploading,
+        lastIngest: state.lastIngest,
+        uploadError: state.uploadError,
+        validating: state.validating,
+        findings: state.findings,
+        validationRan: state.validationRan,
+        validateError: state.validateError,
+      );
+    } catch (_) {
+      state = ComplianceState(
+        engineStatus: EngineStatus.offline,
+        engineVersion: state.engineVersion,
+        documents: state.documents,
+        loadingDocuments: state.loadingDocuments,
+        rules: state.rules,
+        loadingRules: state.loadingRules,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: state.uploading,
+        lastIngest: state.lastIngest,
+        uploadError: state.uploadError,
+        validating: state.validating,
+        findings: state.findings,
+        validationRan: state.validationRan,
+        validateError: state.validateError,
+      );
+    }
+  }
+
+  Future<void> loadDocuments() async {
+    state = ComplianceState(
+      engineStatus: state.engineStatus,
+      engineVersion: state.engineVersion,
+      documents: state.documents,
+      loadingDocuments: true,
+      rules: state.rules,
+      loadingRules: state.loadingRules,
+      severityFilter: state.severityFilter,
+      categoryRuleFilter: state.categoryRuleFilter,
+      uploading: state.uploading,
+      lastIngest: state.lastIngest,
+      validating: state.validating,
+      findings: state.findings,
+      validationRan: state.validationRan,
+      validateError: state.validateError,
+    );
+    try {
+      final docs = await _service.listDocuments();
+      state = ComplianceState(
+        engineStatus: state.engineStatus,
+        engineVersion: state.engineVersion,
+        documents: docs,
+        loadingDocuments: false,
+        rules: state.rules,
+        loadingRules: state.loadingRules,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: state.uploading,
+        lastIngest: state.lastIngest,
+        uploadError: state.uploadError,
+        validating: state.validating,
+        findings: state.findings,
+        validationRan: state.validationRan,
+        validateError: state.validateError,
+      );
+    } catch (_) {
+      state = ComplianceState(
+        engineStatus: state.engineStatus,
+        engineVersion: state.engineVersion,
+        documents: state.documents,
+        loadingDocuments: false,
+        rules: state.rules,
+        loadingRules: state.loadingRules,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: state.uploading,
+        lastIngest: state.lastIngest,
+        uploadError: state.uploadError,
+        validating: state.validating,
+        findings: state.findings,
+        validationRan: state.validationRan,
+        validateError: state.validateError,
+      );
+    }
+  }
+
+  Future<void> loadRules() async {
+    state = ComplianceState(
+      engineStatus: state.engineStatus,
+      engineVersion: state.engineVersion,
+      documents: state.documents,
+      loadingDocuments: state.loadingDocuments,
+      rules: state.rules,
+      loadingRules: true,
+      severityFilter: state.severityFilter,
+      categoryRuleFilter: state.categoryRuleFilter,
+      uploading: state.uploading,
+      lastIngest: state.lastIngest,
+      uploadError: state.uploadError,
+      validating: state.validating,
+      findings: state.findings,
+      validationRan: state.validationRan,
+      validateError: state.validateError,
+    );
+    try {
+      final rules = await _service.listRules();
+      state = ComplianceState(
+        engineStatus: state.engineStatus,
+        engineVersion: state.engineVersion,
+        documents: state.documents,
+        loadingDocuments: state.loadingDocuments,
+        rules: rules,
+        loadingRules: false,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: state.uploading,
+        lastIngest: state.lastIngest,
+        uploadError: state.uploadError,
+        validating: state.validating,
+        findings: state.findings,
+        validationRan: state.validationRan,
+        validateError: state.validateError,
+      );
+    } catch (_) {
+      state = ComplianceState(
+        engineStatus: state.engineStatus,
+        engineVersion: state.engineVersion,
+        documents: state.documents,
+        loadingDocuments: state.loadingDocuments,
+        rules: state.rules,
+        loadingRules: false,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: state.uploading,
+        lastIngest: state.lastIngest,
+        uploadError: state.uploadError,
+        validating: state.validating,
+        findings: state.findings,
+        validationRan: state.validationRan,
+        validateError: state.validateError,
+      );
+    }
+  }
+
+  Future<void> ingestDocument(Uint8List bytes, String filename) async {
+    state = ComplianceState(
+      engineStatus: state.engineStatus,
+      engineVersion: state.engineVersion,
+      documents: state.documents,
+      loadingDocuments: state.loadingDocuments,
+      rules: state.rules,
+      loadingRules: state.loadingRules,
+      severityFilter: state.severityFilter,
+      categoryRuleFilter: state.categoryRuleFilter,
+      uploading: true,
+      // clear previous result/error
+      validating: state.validating,
+      findings: state.findings,
+      validationRan: state.validationRan,
+      validateError: state.validateError,
+    );
+    try {
+      final result = await _service.ingestDocument(bytes, filename);
+      state = ComplianceState(
+        engineStatus: state.engineStatus,
+        engineVersion: state.engineVersion,
+        documents: state.documents,
+        loadingDocuments: state.loadingDocuments,
+        rules: state.rules,
+        loadingRules: state.loadingRules,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: false,
+        lastIngest: result,
+        validating: state.validating,
+        findings: state.findings,
+        validationRan: state.validationRan,
+        validateError: state.validateError,
+      );
+      await Future.wait([loadDocuments(), loadRules()]);
+    } catch (e) {
+      state = ComplianceState(
+        engineStatus: state.engineStatus,
+        engineVersion: state.engineVersion,
+        documents: state.documents,
+        loadingDocuments: state.loadingDocuments,
+        rules: state.rules,
+        loadingRules: state.loadingRules,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: false,
+        uploadError: e.toString().replaceAll('Exception: ', ''),
+        validating: state.validating,
+        findings: state.findings,
+        validationRan: state.validationRan,
+        validateError: state.validateError,
+      );
+    }
+  }
+
+  Future<void> validateCode(String filePath, String content) async {
+    state = ComplianceState(
+      engineStatus: state.engineStatus,
+      engineVersion: state.engineVersion,
+      documents: state.documents,
+      loadingDocuments: state.loadingDocuments,
+      rules: state.rules,
+      loadingRules: state.loadingRules,
+      severityFilter: state.severityFilter,
+      categoryRuleFilter: state.categoryRuleFilter,
+      uploading: state.uploading,
+      lastIngest: state.lastIngest,
+      uploadError: state.uploadError,
+      validating: true,
+      findings: const [],
+      validationRan: false,
+    );
+    try {
+      final findings = await _service.validateCode(filePath, content);
+      state = ComplianceState(
+        engineStatus: state.engineStatus,
+        engineVersion: state.engineVersion,
+        documents: state.documents,
+        loadingDocuments: state.loadingDocuments,
+        rules: state.rules,
+        loadingRules: state.loadingRules,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: state.uploading,
+        lastIngest: state.lastIngest,
+        uploadError: state.uploadError,
+        validating: false,
+        findings: findings,
+        validationRan: true,
+      );
+    } catch (e) {
+      state = ComplianceState(
+        engineStatus: state.engineStatus,
+        engineVersion: state.engineVersion,
+        documents: state.documents,
+        loadingDocuments: state.loadingDocuments,
+        rules: state.rules,
+        loadingRules: state.loadingRules,
+        severityFilter: state.severityFilter,
+        categoryRuleFilter: state.categoryRuleFilter,
+        uploading: state.uploading,
+        lastIngest: state.lastIngest,
+        uploadError: state.uploadError,
+        validating: false,
+        findings: const [],
+        validationRan: true,
+        validateError: e.toString().replaceAll('Exception: ', ''),
+      );
+    }
+  }
+
+  void setSeverityFilter(String f) {
+    state = ComplianceState(
+      engineStatus: state.engineStatus,
+      engineVersion: state.engineVersion,
+      documents: state.documents,
+      loadingDocuments: state.loadingDocuments,
+      rules: state.rules,
+      loadingRules: state.loadingRules,
+      severityFilter: f,
+      categoryRuleFilter: state.categoryRuleFilter,
+      uploading: state.uploading,
+      lastIngest: state.lastIngest,
+      uploadError: state.uploadError,
+      validating: state.validating,
+      findings: state.findings,
+      validationRan: state.validationRan,
+      validateError: state.validateError,
     );
   }
 
-  void setCategoryFilter(String category) {
-    state = state.copyWith(categoryFilter: category);
+  void setCategoryRuleFilter(String f) {
+    state = ComplianceState(
+      engineStatus: state.engineStatus,
+      engineVersion: state.engineVersion,
+      documents: state.documents,
+      loadingDocuments: state.loadingDocuments,
+      rules: state.rules,
+      loadingRules: state.loadingRules,
+      severityFilter: state.severityFilter,
+      categoryRuleFilter: f,
+      uploading: state.uploading,
+      lastIngest: state.lastIngest,
+      uploadError: state.uploadError,
+      validating: state.validating,
+      findings: state.findings,
+      validationRan: state.validationRan,
+      validateError: state.validateError,
+    );
   }
 }
+
+// ── Providers ─────────────────────────────────────────────────────────────────
+
+final complianceEngineServiceProvider =
+    Provider((_) => ComplianceEngineService());
 
 final complianceProvider =
     StateNotifierProvider<ComplianceNotifier, ComplianceState>(
-        (ref) => ComplianceNotifier());
+  (ref) => ComplianceNotifier(ref.watch(complianceEngineServiceProvider)),
+);
